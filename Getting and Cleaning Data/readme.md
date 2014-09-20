@@ -1,6 +1,9 @@
 # Course Project for Getting and Cleaning Data
 
 Included within this readme file are some details on how the script work
+Just download the script into work directory and unpack your data into your work directory as well.
+
+Load the code into RStudio and click the source button at the top-right hand corner of the coding panel, the code should hopefully run fine
 
 ## Running the run_analysis.R function
 
