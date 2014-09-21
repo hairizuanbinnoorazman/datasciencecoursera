@@ -67,7 +67,7 @@ combined_filter<-sub_act_label_filter | mean_label_filter | std_label_filter
 ## Altering the names of the dataset and putting in the filters
 names(combined_data)<-features_vector
 filtered_combined_data<-combined_data[,combined_filter]
-write.table(DT_final, "Combined data.txt", sep= " ", row.names=FALSE)
+write.table(filtered_combined_data, "Combined data.txt", sep= " ", row.names=FALSE)
 
 ## Utilize the data.table package for rapid rollup of data
 ## This section is commented out as it is not required.
