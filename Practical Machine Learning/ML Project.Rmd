@@ -1,0 +1,133 @@
+---
+title: "Weight Lifting Exercises Analysis"
+author: "Hairizuan Bin Noorazman"
+date: "Thursday, February 19, 2015"
+output: html_document
+---
+
+This report is an analysis of data patterns taken from wearable devices such as Jawbone Up, Nike Fuelband and Fitbit. It is now possible to collect large amounts of personal activity data and to use it to identify whether a person does a exercise correctly or incorrectly.
+
+# Exploratory data analysis
+The code in this section is hidden to prevent too much redundant output for this portion of the report.
+
+```{r, results='hide'}
+library(caret)
+library(Hmisc)
+
+# download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "file1.csv")
+# download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "file2.csv")
+training<-read.csv("file1.csv")
+testing<-read.csv("file2.csv")
+#training<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+#testing<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+#head(training)
+#summary(training)
+#class(training$classe)
+
+training<-training[,-c(1:7)]
+testing<-testing[,-c(1:7)]
+```
+
+There are 6 users. The forms of the exercise is represented in the classe column. A value of 'A' would mean that the exercise was executed correctly while other values such as B to E would mean that the exercise was done incorrectly. These are the forms that people tend to go into which is actually the wrong form of that respective exercise. The first 7 columns are not necessary for modelling and will be removed.
+
+The aim of this modelling process is to use the data from accelerators and to predict which form it falls in. We will utilize several possible models for this such Random Forests, Generalized Linear Models with stepwise (So that it will take only the necessary variables). We will first try with all variables. The variables will undergo scaling to ensure that the variables have their variance fully captured and to ensure that the spikes is not due to a variable being on another scale. After which we may explore the data further to elimate variables that have high correlations with each other.
+
+# Cross validation and out of sample error
+
+Another point to note is that the model being run is a random forest model. Models built by random forest algorithms tend to overfit and hence, it is necessary to use cross validation techniques to reduce out of sample error. Without the cross validation done on the data set, the out of sample error can be said to be quite large.
+
+After initial running of the random forest, it might be a good idea to remove some of the variables with the nearZeroVar function to remove variable that do not contribute to the differentiation between the different forms. 
+
+# Modelling with all variables.
+
+In the early portion of this step, it involves removing as many variables as possible to reduce the computation time of building a model. Earlier iterations of model building almost took a day when it was ran against all variables on a single core threaded process.
+
+A few libraries for parallelizing the random forest model is brought in to reduce the computational time and effort to create the model
+
+
+```{r, cache=TRUE}
+# Remove all variables that have zero variance
+# The variables that are removed from this are variables that remain constant throughtout the whole dataset and cannot be # used to differentiate between the different classes
+nsv<-nearZeroVar(training, saveMetrics=TRUE)
+training<-training[, !nsv[,4]]
+testing<-testing[, !nsv[,4]]
+
+# Force everything into numeric. 
+# Reason for this is that even when the some of the columns are read of as integer, it cannot be used
+# to predict on testing dataset with columns that are numeric. This was attempted in earlier trials and it was found
+# that forcing the data frame to a single numeric type data.frame would be the fastest way to get it
+asNumeric <- function(x) as.numeric(as.character(x))
+a.1<-data.frame(sapply(training, asNumeric))
+a.2<-data.frame(sapply(testing, asNumeric))
+
+# Reinserting the a.1 classe column to its correct form which is supposed to be a factors variable
+# The last column of th
+a.1$classe<-training$classe
+names(a.2)[94]<-"classe"
+a.2[,94]<-as.factor(a.2[,94])
+
+# function to count no of NA
+naCount<-function(x){
+  sum(is.na(x))
+}
+
+# Remove all variables that have a majority of its values as NA
+# Reason for this is to reduce the data frame to as few columns as possible
+# Also, having columns which is able to differentiate only a small segment of the classes may not be a good thing and
+# it may actually serve to interfere with the actual model.
+naCol<-sapply(a.1, naCount)
+naCol<-sort(naCol, decreasing = TRUE)
+naCol<-naCol[naCol==0]
+naCol_names<-names(naCol)
+
+
+## Actual removing of the columns that contain many NAs.
+# THis is done by selecting column that do not contain too many NAs
+a.3<-a.1[, naCol_names]
+a.4<-a.2[, naCol_names]
+
+remove(a.1)
+remove(a.2)
+remove(training)
+remove(testing)
+
+
+# Set seed number of repeatability of work
+set.seed(1000)
+
+# Use cross validation
+ctrl<-trainControl(method = "repeatedcv", repeats = 1)
+
+# Utilize the parallizing libraries
+library(doParallel)
+cl<-makeCluster(3)
+registerDoParallel(cl)
+# The processes are observed to be parallel by checking the Task Manager (this was done on a Windows PC)
+# 3 processes were detected with CPU utilization at 98% for about 10-15 minutes
+
+```
+
+The actual building of the model
+
+```{r, cache=TRUE}
+# Build the random forest model
+# Advised by forums to utilize the function in this manner to reduce computational complexity
+modelFit1<-train(x = a.3[,-53], y=a.3[,53], method="rf", trControl = ctrl, preProc = c("center", "scale"), tuneGrid = data.frame(mtry = 4))
+```
+
+After creating the model, we would test that model against the data it is being trained with to ensure that it accuracy-wise, it meets the standard.
+
+``` {r}
+predictionSelf<-predict(modelFit1, newdata =  a.3[,-53])
+accuracy<-confusionMatrix(predictionSelf, a.3$classe)
+accuracy
+```
+
+It can be observed that generally, random forest models have high accuracy rates. However, it is difficult to be able to interpret why certain variables contribute to the final classification of the poses.
+
+The model is then run on the test set
+
+``` {r}
+prediction1<-predict(modelFit1, newdata =  a.4[,-53])
+prediction1
+```
